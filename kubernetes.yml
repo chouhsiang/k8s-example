@@ -1,0 +1,191 @@
+# 以下是系統共用參數
+# 也可以透過指令匯入檔案 kubectl create configmap schema-env --from-env-file .env
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: schema-env
+data:
+  APP_ENV: production
+  FRONTEND_FRONTSTAGE_URL: "http://schema-frontend-frontstage:3000"
+  DB_HOST: XXX
+  DB_PORT: XXX
+  DB_DATABASE: XXX
+  DB_USERNAME: XXX
+  DB_PASSWORD: XXX
+
+# 以下是SSL憑證放到Secret
+# 也可以透過指令匯入檔案 kubectl create secret tls ssl-cert --key tls.key --cert tls.crt
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ssl-cert
+data:
+  tls.crt: base64 encoded cert
+  tls.key: base64 encoded key
+type: kubernetes.io/tls
+
+
+# 以下是後台
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schema-backend
+  template:
+    metadata:
+      labels:
+        app: schema-backend
+    spec:
+      containers:
+      - name: schema-backend
+        image: backend
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: schema-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+selector:
+    app: schema-backend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-backend
+spec:
+  tls:
+  - secretName: ssl-cert
+  rules:
+  - host: backend.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend
+            port:
+              number: 80
+
+
+
+
+# 以下是前台的apache
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-frontend-backstage
+  labels:
+    app: schema-frontend-backstage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schema-frontend-backstage
+  template:
+    metadata:
+      labels:
+        app: schema-frontend-backstage
+    spec:
+      containers:
+      - name: schema-frontend-backstage
+        image: frontend-backstage
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+          name: schema-env
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-frontend-backstage
+  labels:
+    app: schema-frontend-backstage
+spec:
+  type: ClusterIP
+  selector:
+    app: schema-frontend-backstage
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-frontend
+spec:
+  tls:
+  - secretName: ssl-cert
+  rules:
+  - host: frontend.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: schema-frontend-backstage
+            port:
+              number: 80
+
+# 以下是前台的node
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-frontend-frontstage
+spec:
+  selector:
+    matchLabels:
+      app: schema-frontend-frontstage
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: schema-frontend-frontstage
+    spec:
+      containers:
+      - name: schema-frontend-frontstage
+        image: frontend-frontstage
+        ports:
+        - containerPort: 3000
+        envFrom:
+         - configMapRef:
+            name: schema-env
+
+            
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-frontend-frontstage
+  labels:
+    app: schema-frontend-frontstage
+spec:
+  selector:
+    app: schema-frontend-frontstage
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
