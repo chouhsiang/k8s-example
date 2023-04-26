@@ -1,0 +1,88 @@
+version: '2.2'
+
+services:
+  backend:
+    restart: always
+    container_name: schema_backend
+    build:
+      context: ./
+      dockerfile: Dockerfile_backend
+      args:
+        deploy_env: testing
+        this_env: testing
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8000:8000"
+    # extra_hosts:
+    #   - es01:192.168.1.38
+    volumes:
+      - ./docker-conf/backstage-ap/service_setting/sites-available:/etc/apache2/sites-available
+      - ./docker-conf/backstage-ap/service_setting/config_files:/etc/apache2/config_files
+      - ./docker-conf/backstage-ap/log/bp_log:/var/log/bp_log
+      - ./docker-conf/backstage-ap/log/apache2:/var/log/apache2
+      - ./docker-conf/backstage-ap/cron:/cron
+      - gcs-volume:/bpof_share_file
+      # - certs:/var/www/html/backend/app/Module/ElasticSearch/certs
+    command: >
+      /bin/bash -c "
+        cp /etc/apache2/config_files/php/php.ini /usr/local/etc/php/php.ini;
+        service apache2 stop;
+        service apache2 start;
+        service cron start;
+        crontab /cron/crontab_testing;
+        tail -f > /dev/null"
+  frontend-frontstage:
+    restart: always
+    container_name: schema_frontend_frontstage
+    build:
+      context: ./
+      dockerfile: Dockerfile_frontend_frontstage
+      args:
+        deploy_env: testing
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./docker-conf/frontstage-ap/service_setting/sites-available:/etc/apache2/sites-available
+      - ./docker-conf/frontstage-ap/service_setting/config_files:/etc/apache2/config_files
+      - ./docker-conf/frontstage-ap/log/bp_log:/var/log/bp_log
+      - ./docker-conf/frontstage-ap/log/apache2:/var/log/apache2
+      - gcs-volume:/bpof_share_file
+    command: >
+      /bin/bash -c "
+        cd /var/www/html/frontend/frontstage;
+        pm2 start ecosystem.config.js;
+        pm2 save;
+        tail -f > /dev/null"
+
+  frontend_backstage:
+    restart: always
+    container_name: schema_frontend_backstage
+    build:
+      context: ./
+      dockerfile: Dockerfile_frontend_backstage
+      args:
+        deploy_env: testing
+        this_env: testing
+    ports:
+      - "8333:80"
+      - "8443:443"
+      - "8111:8000"
+    volumes:
+      - ./docker-conf/frontstage-ap/service_setting/sites-available:/etc/apache2/sites-available
+      - ./docker-conf/frontstage-ap/service_setting/config_files:/etc/apache2/config_files
+      - ./docker-conf/frontstage-ap/log/bp_log:/var/log/bp_log
+      - ./docker-conf/frontstage-ap/log/apache2:/var/log/apache2
+      - gcs-volume:/bpof_share_file
+    command: >
+      /bin/bash -c "
+        cp /etc/apache2/config_files/php/php.ini /usr/local/etc/php/php.ini;
+        service apache2 stop;
+        service apache2 start;
+        tail -f > /dev/null"
+volumes:
+  gcs-volume:
+    driver: gcs
+    driver_opts:
+      bucket: my-bucket
+      keyfile: /path/to/keyfile.json      
